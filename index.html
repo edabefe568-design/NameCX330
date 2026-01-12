@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D 麻将 - 终极本地版</title>
+    <title>3D 麻将 - 饿了么极速版</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #2e8b57; font-family: "Microsoft YaHei", sans-serif; }
         #info {
@@ -30,14 +30,15 @@
     </style>
     
     <script src="./three.min.js"></script>
-    <script src="./hands.js"></script>
+    
+    <script src="https://npm.elemecdn.com/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
 <div id="debug-log"></div>
 
 <div id="info">
-    <h3 style="margin:0 0 10px 0;">🀄️ 四人麻将 (本地版)</h3>
+    <h3 style="margin:0 0 10px 0;">🀄️ 四人麻将 (极速版)</h3>
     <p><b>状态:</b> <span id="status_text">等待加载...</span></p>
     <hr style="border-color: #555;">
     <div style="font-size: 14px; line-height: 1.8;">
@@ -47,8 +48,8 @@
 </div>
 
 <div id="loading">
-    正在启动...<br>
-    <span style="font-size:14px; font-weight:normal; color:#ddd">请【关闭VPN】体验最佳速度</span>
+    正在下载 AI 模型...<br>
+    <span style="font-size:14px; font-weight:normal; color:#ddd">首次运行需要下载 3MB 数据<br>请耐心等待 10-20 秒</span>
 </div>
 <video class="input_video" playsinline webkit-playsinline></video>
 
@@ -59,40 +60,55 @@ function logError(msg) {
     logBox.style.display = 'block';
     logBox.innerText += "❌ " + msg + "\n";
     document.getElementById('status_text').innerText = "发生错误";
-    document.getElementById('loading').innerHTML = "⚠️ 启动失败<br><span style='font-size:14px'>请截图发给工程师</span>";
 }
 window.onerror = function(msg) { logError(msg); };
 
+// --- 资源配置 (关键修改) ---
+const config = {
+    // 使用饿了么 CDN 加载核心数据文件 (.wasm)
+    locateFile: (file) => {
+        const url = `https://npm.elemecdn.com/@mediapipe/hands@0.4.1646424915/${file}`;
+        console.log("正在请求模型文件:", url);
+        return url;
+    }
+};
+
 // --- 启动流程 ---
 async function startApp() {
-    // 1. 检查本地文件是否就位
+    // 1. 检查文件完整性
     if (typeof THREE === 'undefined') {
-        logError("本地 three.min.js 加载失败！\n请检查文件内容是否正确。");
-        return;
+        logError("本地 three.min.js 未加载！请检查文件。"); return;
     }
     if (typeof Hands === 'undefined') {
-        logError("本地 hands.js 加载失败！\n请检查文件内容是否正确。");
-        return;
+        logError("手势库 JS 未加载！请尝试刷新或关闭 VPN。"); return;
     }
 
     try {
         init3D();
         
-        // 2. 配置 Hands
-        // 注意：hands.js 加载后，还需要下载 .wasm 文件
-        // 这里我们将 .wasm 文件指向国内镜像，确保加载速度
-        const hands = new Hands({locateFile: (file) => {
-            return `https://unpkg.npmmirror.com/@mediapipe/hands@0.4.1646424915/${file}`;
-        }});
+        // 2. 初始化手势库
+        const hands = new Hands({locateFile: config.locateFile});
+        hands.setOptions({
+            maxNumHands: 1, 
+            modelComplexity: 1, 
+            minDetectionConfidence: 0.5, 
+            minTrackingConfidence: 0.5
+        });
         
-        hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
-        hands.onResults(onResults);
+        // 关键：第一次识别成功后，隐藏加载动画
+        hands.onResults((results) => {
+            const loading = document.getElementById('loading');
+            if(loading.style.display !== 'none') {
+                loading.style.display = 'none';
+                console.log("模型加载成功！游戏开始！");
+            }
+            onResults(results); // 调用原有的游戏逻辑
+        });
         
-        // 3. 启动摄像头
+        // 3. 启动摄像头 (原生API，不报错)
         const videoElement = document.getElementsByClassName('input_video')[0];
         document.getElementById('loading').innerHTML = "步骤 2/3: 请求摄像头...<br><span style='font-size:14px; color:#f00'>请在上方弹窗点击“允许”</span>";
         
-        // 使用原生 API，不依赖 camera_utils.js，兼容性最好
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { width: 1280, height: 720, facingMode: "user" }
         });
@@ -100,10 +116,24 @@ async function startApp() {
         videoElement.srcObject = stream;
         await videoElement.play();
         
-        document.getElementById('loading').innerText = "步骤 3/3: 正在识别手势...";
+        document.getElementById('loading').innerHTML = "步骤 3/3: 正在下载模型数据...<br><span style='font-size:14px'>请把【手】伸到摄像头前晃一晃！</span>";
         
-        // 开始循环检测
-        requestAnimationFrame(() => processVideo(hands, videoElement));
+        // 4. 超时检测 (如果 15 秒还没进游戏，提示用户)
+        setTimeout(() => {
+            const loading = document.getElementById('loading');
+            if(loading.style.display !== 'none') {
+                loading.innerHTML = "⚠️ 加载过慢？<br><span style='font-size:14px'>1. 请确保 VPN 已关闭<br>2. 请把手伸到镜头前<br>3. 尝试按 Ctrl+F5 刷新</span>";
+            }
+        }, 15000);
+
+        // 5. 循环处理视频帧
+        const sendFrame = async () => {
+            if (videoElement && !videoElement.paused) {
+                await hands.send({image: videoElement});
+            }
+            requestAnimationFrame(sendFrame);
+        };
+        sendFrame();
         
     } catch (err) {
         logError("启动失败: " + err.message);
@@ -113,20 +143,7 @@ async function startApp() {
     }
 }
 
-// 循环检测函数
-async function processVideo(hands, videoElement) {
-    if (hands && videoElement && !videoElement.paused) {
-        try {
-            await hands.send({image: videoElement});
-        } catch(e) {
-            console.error(e);
-        }
-    }
-    requestAnimationFrame(() => processVideo(hands, videoElement));
-}
-
-// --- 麻将绘制与3D逻辑 (精简版) ---
-// ... (保持原有的 3D 逻辑不变，为了节省篇幅，这里直接调用 init3D) ...
+// --- 游戏逻辑 (压缩版，保持原样) ---
 const TILE_PAINTER={createTexture:function(e,t){const a=document.createElement("canvas");a.width=256,a.height=320;const r=a.getContext("2d");if(r.fillStyle="#ffffff",r.fillRect(0,0,256,320),r.strokeStyle="#e8e8e8",r.lineWidth=2,r.strokeRect(4,4,248,312),r.textAlign="center",r.textBaseline="middle","饼"===e)this.drawDots(r,t);else if("条"===e)this.drawBamboos(r,t);else if("万"===e)this.drawWan(r,t);else if("字"===e)this.drawHonors(r,t);const n=new THREE.CanvasTexture(a);return n.colorSpace=THREE.SRGBColorSpace,n.flipY=!0,n},colors:{R:"#d60000",B:"#0044bb",G:"#008800"},drawDots:function(e,t){const{R:a,B:r,G:n}=this.colors,o=(t,a,r,n,o)=>{e.beginPath(),e.arc(t,a,r,0,2*Math.PI),e.fillStyle=n,e.fill(),o&&(e.beginPath(),e.arc(t,a,.4*r,0,2*Math.PI),e.fillStyle=o,e.fill()),e.beginPath(),e.arc(t,a,.75*r,0,2*Math.PI),e.strokeStyle="rgba(255,255,255,0.4)",e.lineWidth=3,e.stroke()};if(1===t){e.beginPath(),e.arc(128,160,70,0,2*Math.PI),e.fillStyle=n,e.fill(),e.beginPath(),e.arc(128,160,45,0,2*Math.PI),e.fillStyle=a,e.fill(),e.strokeStyle="white",e.lineWidth=4;for(let t=0;t<12;t++){let a=t/12*Math.PI*2;e.beginPath(),e.moveTo(128,160),e.lineTo(128+70*Math.cos(a),160+70*Math.sin(a)),e.stroke()}return}({2:[[128,80,r,a],[128,240,n,a]],3:[[60,60,r,a],[128,160,a,a],[196,260,n,a]],4:[[70,80,r,n],[186,80,r,n],[70,240,n,r],[186,240,n,r]],5:[[70,70,r,n],[186,70,r,n],[128,160,a,a],[70,250,n,r],[186,250,n,r]],6:[[70,70,n,a],[186,70,n,a],[70,160,a,a],[186,160,a,a],[70,250,a,a],[186,250,a,a]],7:[[60,65,n,r],[128,85,n,r],[196,105,n,r],[70,180,a,a],[186,180,a,a],[70,260,a,a],[186,260,a,a]],8:[[70,60,r,r],[186,60,r,r],[70,126,r,r],[186,126,r,r],[70,192,r,r],[186,192,r,r],[70,260,r,r],[186,260,r,r]],9:[[60,60,r,r],[128,60,r,r],[196,60,r,r],[60,160,a,a],[128,160,a,a],[196,160,a,a],[60,260,n,n],[128,260,n,n],[196,260,n,n]]}[t]||[]).forEach((e=>o(e[0],e[1],24,e[2],e[3])))},drawBamboos:function(e,t){const{R:a,B:r,G:n}=this.colors;if(1===t)return e.fillStyle="#dcb",e.beginPath(),e.arc(128,180,40,0,2*Math.PI),e.fill(),e.font="160px Arial",e.fillStyle=n,e.fillText("🐦",128,160),void 0;const o=(t,a,r)=>{e.lineCap="round",e.lineWidth=14,e.strokeStyle=r,e.beginPath(),e.moveTo(t,a-26),e.lineTo(t,a+26),e.stroke(),e.strokeStyle="white",e.lineWidth=3,e.beginPath(),e.moveTo(t-6,a),e.lineTo(t+6,a),e.stroke()};({2:[[128,80,r],[128,240,n]],3:[[128,60,r],[70,240,n],[186,240,n]],4:[[70,80,r],[186,80,n],[70,240,n],[186,240,r]],5:[[70,70,n],[186,70,r],[128,160,a],[70,250,r],[186,250,n]],6:[[70,60,n],[128,60,n],[186,60,n],[70,240,n],[128,240,n],[186,240,n]],7:[[128,60,a],[70,140,n],[128,140,r],[186,140,n],[70,240,n],[128,240,r],[186,240,n]],8:[[70,60,n],[128,60,n],[186,60,n],[70,160,a],[186,160,a],[70,260,r],[128,260,r],[186,260,r]],9:[[70,60,a],[128,60,r],[186,60,n],[70,160,a],[128,160,r],[186,160,n],[70,260,a],[128,260,r],[186,260,n]]}[t]||{2:[[128,80,r],[128,240,n]]}[2]).forEach((e=>o(e[0],e[1],e[2])))},drawWan:function(e,t){const{R:a,B:r}=this.colors,n=["","一","二","三","四","五","六","七","八","九"];e.font='bold 90px "Microsoft YaHei"',e.fillStyle=r,e.fillText(n[t],128,90),e.font='bold 120px "Microsoft YaHei"',e.fillStyle=a,e.fillText("萬",128,230)},drawHonors:function(e,t){const{R:a,B:r,G:n}=this.colors;if("白"===t)return e.strokeStyle=r,e.lineWidth=6,e.strokeRect(45,45,166,230),e.lineWidth=3,e.strokeRect(55,55,146,210),void 0;let o=r;"中"===t&&(o=a),"发"===t&&(o=n),e.font='bold 140px "Microsoft YaHei"',e.fillStyle=o,e.fillText(t,128,160)}};
 let camera,scene,renderer,myHand=[],opponentHands=[],raycaster,mouse,selectedTile=null,handCursor,tileGeometry=null;const TILE_W=2.2,TILE_H=3,TILE_D=1.4,BEVEL=.1,FACE_Z=TILE_D/2+BEVEL+.02;let isPinching=!1,cameraAngle=0,targetCameraAngle=0,previousPalmX=null;
 function init3D(){scene=new THREE.Scene,scene.background=new THREE.Color(3049303),scene.fog=new THREE.Fog(3049303,20,100),camera=new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,.1,1e3),updateCameraPosition();const e=new THREE.AmbientLight(16777215,.6);scene.add(e);const t=new THREE.DirectionalLight(16772795,1);t.position.set(5,20,10),t.castShadow=!0,t.shadow.mapSize.set(2048,2048),scene.add(t);const a=new THREE.Mesh(new THREE.PlaneGeometry(120,120),new THREE.MeshStandardMaterial({color:3049303,roughness:.9}));a.rotation.x=-Math.PI/2,a.position.y=-2,a.receiveShadow=!0,scene.add(a);const r=new THREE.MeshStandardMaterial({color:4070151}),n=new THREE.BoxGeometry(122,2,2),o=new THREE.Mesh(n,r);o.position.set(0,-2,-60),scene.add(o);const i=new THREE.Mesh(n,r);i.position.set(0,-2,60),scene.add(i);const l=new THREE.Mesh(new THREE.BoxGeometry(2,2,120),r);l.position.set(-60,-2,0),scene.add(l);const s=new THREE.Mesh(new THREE.BoxGeometry(2,2,120),r);s.position.set(60,-2,0),scene.add(s),handCursor=new THREE.Mesh(new THREE.SphereGeometry(.35),new THREE.MeshBasicMaterial({color:16776960,transparent:!0,opacity:.8})),scene.add(handCursor),renderer=new THREE.WebGLRenderer({antialias:!0,alpha:!0}),renderer.setSize(window.innerWidth,window.innerHeight),renderer.shadowMap.enabled=!0,renderer.shadowMap.type=THREE.PCFSoftShadowMap,renderer.outputEncoding=THREE.sRGBEncoding,document.body.appendChild(renderer.domElement),raycaster=new THREE.Raycaster,mouse=new THREE.Vector2,window.addEventListener("resize",(()=>{camera.aspect=window.innerWidth/window.innerHeight,camera.updateProjectionMatrix(),renderer.setSize(window.innerWidth,window.innerHeight)}));const d=new THREE.Shape,c=TILE_W,h=TILE_H,u=.3,m=-c/2,p=-h/2;d.moveTo(m,p+u),d.lineTo(m,p+h-u),d.quadraticCurveTo(m,p+h,m+u,p+h),d.lineTo(m+c-u,p+h),d.quadraticCurveTo(m+c,p+h,m+c,p+h-u),d.lineTo(m+c,p+u),d.quadraticCurveTo(m+c,p,m+c-u,p),d.lineTo(m+u,p),d.quadraticCurveTo(m,p,m,p+u),tileGeometry=new THREE.ExtrudeGeometry(d,{depth:TILE_D,bevelEnabled:!0,bevelThickness:BEVEL,bevelSize:BEVEL,bevelSegments:2}),tileGeometry.center(),initGame()}
@@ -136,7 +153,7 @@ function setupOpponentHandSimple(e,t,a,r,n,o){const i=1*TILE_W,l=t*i;for(let s=0
 function generateTileData(){const e=[];return["万","条","饼"].forEach((t=>{for(let a=1;a<=9;a++)for(let r=0;r<4;r++)e.push({type:t,val:a})})),["东","南","西","北","中","发","白"].forEach((t=>{for(let a=0;a<4;a++)e.push({type:"字",val:t})})),function(e){for(let t=e.length-1;t>0;t--){const a=Math.floor(Math.random()*(t+1));[e[t],e[a]]=[e[a],e[t]]}}(e),e}
 function reorderTiles(){const e=1.1*TILE_W,t=-(myHand.length*e)/2+e/2;myHand.forEach(((a,r)=>{a!==selectedTile&&(a.position.lerp(new THREE.Vector3(t+r*e,-.5,19),.2),a.rotation.set(-Math.PI/10,0,0))}))}
 function updateCameraPosition(){cameraAngle+=.05*(targetCameraAngle-cameraAngle);const e=35;camera.position.x=e*Math.sin(cameraAngle),camera.position.z=e*Math.cos(cameraAngle)+6,camera.position.y=24,camera.lookAt(0,-3,0)}
-function onResults(e){document.getElementById("loading").style.display="none",reorderTiles(),updateCameraPosition();const t=document.getElementById("dot-grab"),a=document.getElementById("dot-view"),r=document.getElementById("status_text");if(t.style.background="#555",a.style.background="#555",e.multiHandLandmarks&&e.multiHandLandmarks.length>0){const n=e.multiHandLandmarks[0],o=n[8],i=n[4],l=n[20],s=n[0];mouse.x=2*(1-o.x)-1,mouse.y=2*-o.y+1,updateCursor();const d=Math.hypot(o.x-i.x,o.y-i.y);Math.hypot(l.x-s.x,l.y-s.y);if(d<.06)isPinching=!0,previousPalmX=null,t.style.background="#0f0",r.innerText="✊ 抓取模式",handCursor.material.color.set(65280),processGrab(!0);else if(!isPinching&&Math.hypot(l.x-s.x,l.y-s.y)>.15){isPinching=!1,processGrab(!1),a.style.background="#00f",r.innerText="✋ 视角模式",handCursor.material.color.set(34969);const e=n[9].x;null!==previousPalmX&&Math.abs(e-previousPalmX)>.003&&(targetCameraAngle+=4*((1-e)-(1-previousPalmX))),previousPalmX=e}else isPinching=!1,processGrab(!1),previousPalmX=null,r.innerText="☝️ 移动光标",handCursor.material.color.set(16776960)}else r.innerText="⏳ 寻找手势...",previousPalmX=null;renderer.render(scene,camera)}
+function onResults(e){reorderTiles(),updateCameraPosition();const t=document.getElementById("dot-grab"),a=document.getElementById("dot-view"),r=document.getElementById("status_text");if(t.style.background="#555",a.style.background="#555",e.multiHandLandmarks&&e.multiHandLandmarks.length>0){const n=e.multiHandLandmarks[0],o=n[8],i=n[4],l=n[20],s=n[0];mouse.x=2*(1-o.x)-1,mouse.y=2*-o.y+1,updateCursor();const d=Math.hypot(o.x-i.x,o.y-i.y);Math.hypot(l.x-s.x,l.y-s.y);if(d<.06)isPinching=!0,previousPalmX=null,t.style.background="#0f0",r.innerText="✊ 抓取模式",handCursor.material.color.set(65280),processGrab(!0);else if(!isPinching&&Math.hypot(l.x-s.x,l.y-s.y)>.15){isPinching=!1,processGrab(!1),a.style.background="#00f",r.innerText="✋ 视角模式",handCursor.material.color.set(34969);const e=n[9].x;null!==previousPalmX&&Math.abs(e-previousPalmX)>.003&&(targetCameraAngle+=4*((1-e)-(1-previousPalmX))),previousPalmX=e}else isPinching=!1,processGrab(!1),previousPalmX=null,r.innerText="☝️ 移动光标",handCursor.material.color.set(16776960)}else r.innerText="⏳ 寻找手势...",previousPalmX=null;renderer.render(scene,camera)}
 function updateCursor(){raycaster.setFromCamera(mouse,camera);const e=new THREE.Plane(new THREE.Vector3(0,0,1),-8),t=new THREE.Vector3;raycaster.ray.intersectPlane(e,t),t&&handCursor.position.lerp(t,.4)}
 function processGrab(e){if(e){if(!selectedTile){const e=raycaster.intersectObjects(myHand,!0);if(e.length>0){let t=e[0].object;for(;t;){if(t.userData&&t.userData.isTile){selectedTile=t;break}if(t.userData&&t.userData.parentTile){selectedTile=t.userData.parentTile;break}t=t.parent}}}selectedTile&&(selectedTile.position.copy(handCursor.position),selectedTile.position.z=12,selectedTile.rotation.x=-Math.PI/6)}else selectedTile&&(selectedTile.position.y>5&&discardTile(selectedTile),selectedTile=null)}
 function discardTile(e){const t=myHand.indexOf(e);t>-1&&myHand.splice(t,1),e.userData=null,e.position.set(10*Math.random()-5,5*Math.random()+5,5*-Math.random()),e.rotation.set(-Math.PI/2,0,3*Math.random()),setTimeout((()=>{const e=createTileMesh(generateTileData()[0]);scene.add(e),myHand.push(e)}),500)}
