@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D 麻将 - 本地无敌版</title>
+    <title>3D 麻将 - 最终混合版</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #2e8b57; font-family: "Microsoft YaHei", sans-serif; }
         #info {
@@ -31,18 +31,18 @@
     
     <script src="./three.min.js"></script>
     
-    <script src="./camera_utils.js"></script>
-    <script src="./control_utils.js"></script>
-    <script src="./drawing_utils.js"></script>
-    <script src="./hands.js"></script>
+    <script src="https://unpkg.npmmirror.com/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.npmmirror.com/@mediapipe/control_utils@0.6.1629159505/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.npmmirror.com/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.npmmirror.com/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
 <div id="debug-log"></div>
 
 <div id="info">
-    <h3 style="margin:0 0 10px 0;">🀄️ 四人麻将 (本地部署版)</h3>
-    <p><b>状态:</b> <span id="status_text">系统初始化...</span></p>
+    <h3 style="margin:0 0 10px 0;">🀄️ 四人麻将 (混合版)</h3>
+    <p><b>状态:</b> <span id="status_text">等待加载...</span></p>
     <hr style="border-color: #555;">
     <div style="font-size: 14px; line-height: 1.8;">
         <div><span class="status-dot" id="dot-grab" style="background:#555"></span> <b>捏合 (👌)</b>: 抓取 / 出牌</div>
@@ -51,35 +51,38 @@
 </div>
 
 <div id="loading">
-    正在加载模型数据...<br>
-    <span style="font-size:14px; font-weight:normal; color:#ddd">基础文件已从本地加载</span>
+    正在启动...<br>
+    <span style="font-size:14px; font-weight:normal; color:#ddd">请确保【VPN已关闭】</span>
 </div>
 <video class="input_video" playsinline webkit-playsinline></video>
 
 <script>
-// --- 错误日志系统 ---
+// --- 错误处理 ---
 function logError(msg) {
     const logBox = document.getElementById('debug-log');
     logBox.style.display = 'block';
     logBox.innerText += "❌ " + msg + "\n";
-    document.getElementById('status_text').innerText = "加载失败";
-    document.getElementById('loading').innerHTML = "⚠️ 错误<br><span style='font-size:14px'>请检查是否已上传所有JS文件</span>";
+    document.getElementById('status_text').innerText = "发生错误";
+    document.getElementById('loading').innerHTML = "⚠️ 启动失败<br><span style='font-size:14px'>请截图发给工程师</span>";
 }
 window.onerror = function(msg) { logError(msg); };
 
-// --- 检查本地文件是否就位 ---
+// --- 关键检查 ---
 window.onload = function() {
     if (typeof THREE === 'undefined') {
-        logError("未找到 three.min.js！请确认已上传该文件到仓库。");
-    } else if (typeof Hands === 'undefined') {
-        logError("未找到 hands.js！请确认已上传该文件到仓库。");
+        logError("本地 three.min.js 加载失败！\n请检查文件是否为空。");
+        return;
     }
+    if (typeof Hands === 'undefined') {
+        logError("手势库加载超时！\n请尝试刷新页面或切换网络。");
+        return;
+    }
+    startApp();
 };
 
-// --- 资源配置 (注意这里) ---
+// --- 资源配置 ---
 const config = {
-    // 这里的 .wasm 文件比较大且特殊，我们依然让它去国内镜像下载
-    // 但因为 hands.js 已经是本地的了，所以不会出现 "Hands is not defined" 错误
+    // 强制 .wasm 文件走国内镜像，防止 404
     locateFile: (file) => {
         return `https://unpkg.npmmirror.com/@mediapipe/hands@0.4.1646424915/${file}`;
     }
@@ -88,7 +91,7 @@ const config = {
 // --- 游戏逻辑 (保持不变) ---
 const TILE_PAINTER={createTexture:function(e,t){const a=document.createElement("canvas");a.width=256,a.height=320;const r=a.getContext("2d");if(r.fillStyle="#ffffff",r.fillRect(0,0,256,320),r.strokeStyle="#e8e8e8",r.lineWidth=2,r.strokeRect(4,4,248,312),r.textAlign="center",r.textBaseline="middle","饼"===e)this.drawDots(r,t);else if("条"===e)this.drawBamboos(r,t);else if("万"===e)this.drawWan(r,t);else if("字"===e)this.drawHonors(r,t);const n=new THREE.CanvasTexture(a);return n.colorSpace=THREE.SRGBColorSpace,n.flipY=!0,n},colors:{R:"#d60000",B:"#0044bb",G:"#008800"},drawDots:function(e,t){const{R:a,B:r,G:n}=this.colors,o=(t,a,r,n,o)=>{e.beginPath(),e.arc(t,a,r,0,2*Math.PI),e.fillStyle=n,e.fill(),o&&(e.beginPath(),e.arc(t,a,.4*r,0,2*Math.PI),e.fillStyle=o,e.fill()),e.beginPath(),e.arc(t,a,.75*r,0,2*Math.PI),e.strokeStyle="rgba(255,255,255,0.4)",e.lineWidth=3,e.stroke()};if(1===t){e.beginPath(),e.arc(128,160,70,0,2*Math.PI),e.fillStyle=n,e.fill(),e.beginPath(),e.arc(128,160,45,0,2*Math.PI),e.fillStyle=a,e.fill(),e.strokeStyle="white",e.lineWidth=4;for(let t=0;t<12;t++){let a=t/12*Math.PI*2;e.beginPath(),e.moveTo(128,160),e.lineTo(128+70*Math.cos(a),160+70*Math.sin(a)),e.stroke()}return}({2:[[128,80,r,a],[128,240,n,a]],3:[[60,60,r,a],[128,160,a,a],[196,260,n,a]],4:[[70,80,r,n],[186,80,r,n],[70,240,n,r],[186,240,n,r]],5:[[70,70,r,n],[186,70,r,n],[128,160,a,a],[70,250,n,r],[186,250,n,r]],6:[[70,70,n,a],[186,70,n,a],[70,160,a,a],[186,160,a,a],[70,250,a,a],[186,250,a,a]],7:[[60,65,n,r],[128,85,n,r],[196,105,n,r],[70,180,a,a],[186,180,a,a],[70,260,a,a],[186,260,a,a]],8:[[70,60,r,r],[186,60,r,r],[70,126,r,r],[186,126,r,r],[70,192,r,r],[186,192,r,r],[70,260,r,r],[186,260,r,r]],9:[[60,60,r,r],[128,60,r,r],[196,60,r,r],[60,160,a,a],[128,160,a,a],[196,160,a,a],[60,260,n,n],[128,260,n,n],[196,260,n,n]]}[t]||[]).forEach((e=>o(e[0],e[1],24,e[2],e[3])))},drawBamboos:function(e,t){const{R:a,B:r,G:n}=this.colors;if(1===t)return e.fillStyle="#dcb",e.beginPath(),e.arc(128,180,40,0,2*Math.PI),e.fill(),e.font="160px Arial",e.fillStyle=n,e.fillText("🐦",128,160),void 0;const o=(t,a,r)=>{e.lineCap="round",e.lineWidth=14,e.strokeStyle=r,e.beginPath(),e.moveTo(t,a-26),e.lineTo(t,a+26),e.stroke(),e.strokeStyle="white",e.lineWidth=3,e.beginPath(),e.moveTo(t-6,a),e.lineTo(t+6,a),e.stroke()};({2:[[128,80,r],[128,240,n]],3:[[128,60,r],[70,240,n],[186,240,n]],4:[[70,80,r],[186,80,n],[70,240,n],[186,240,r]],5:[[70,70,n],[186,70,r],[128,160,a],[70,250,r],[186,250,n]],6:[[70,60,n],[128,60,n],[186,60,n],[70,240,n],[128,240,n],[186,240,n]],7:[[128,60,a],[70,140,n],[128,140,r],[186,140,n],[70,240,n],[128,240,r],[186,240,n]],8:[[70,60,n],[128,60,n],[186,60,n],[70,160,a],[186,160,a],[70,260,r],[128,260,r],[186,260,r]],9:[[70,60,a],[128,60,r],[186,60,n],[70,160,a],[128,160,r],[186,160,n],[70,260,a],[128,260,r],[186,260,n]]}[t]||{2:[[128,80,r],[128,240,n]]}[2]).forEach((e=>o(e[0],e[1],e[2])))},drawWan:function(e,t){const{R:a,B:r}=this.colors,n=["","一","二","三","四","五","六","七","八","九"];e.font='bold 90px "Microsoft YaHei"',e.fillStyle=r,e.fillText(n[t],128,90),e.font='bold 120px "Microsoft YaHei"',e.fillStyle=a,e.fillText("萬",128,230)},drawHonors:function(e,t){const{R:a,B:r,G:n}=this.colors;if("白"===t)return e.strokeStyle=r,e.lineWidth=6,e.strokeRect(45,45,166,230),e.lineWidth=3,e.strokeRect(55,55,146,210),void 0;let o=r;"中"===t&&(o=a),"发"===t&&(o=n),e.font='bold 140px "Microsoft YaHei"',e.fillStyle=o,e.fillText(t,128,160)}};
 let camera,scene,renderer,myHand=[],opponentHands=[],raycaster,mouse,selectedTile=null,handCursor,tileGeometry=null;const TILE_W=2.2,TILE_H=3,TILE_D=1.4,BEVEL=.1,FACE_Z=TILE_D/2+BEVEL+.02;let isPinching=!1,cameraAngle=0,targetCameraAngle=0,previousPalmX=null;
-function init3D(){if(typeof THREE==='undefined') return; scene=new THREE.Scene,scene.background=new THREE.Color(3049303),scene.fog=new THREE.Fog(3049303,20,100),camera=new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,.1,1e3),updateCameraPosition();const e=new THREE.AmbientLight(16777215,.6);scene.add(e);const t=new THREE.DirectionalLight(16772795,1);t.position.set(5,20,10),t.castShadow=!0,t.shadow.mapSize.set(2048,2048),scene.add(t);const a=new THREE.Mesh(new THREE.PlaneGeometry(120,120),new THREE.MeshStandardMaterial({color:3049303,roughness:.9}));a.rotation.x=-Math.PI/2,a.position.y=-2,a.receiveShadow=!0,scene.add(a);const r=new THREE.MeshStandardMaterial({color:4070151}),n=new THREE.BoxGeometry(122,2,2),o=new THREE.Mesh(n,r);o.position.set(0,-2,-60),scene.add(o);const i=new THREE.Mesh(n,r);i.position.set(0,-2,60),scene.add(i);const l=new THREE.Mesh(new THREE.BoxGeometry(2,2,120),r);l.position.set(-60,-2,0),scene.add(l);const s=new THREE.Mesh(new THREE.BoxGeometry(2,2,120),r);s.position.set(60,-2,0),scene.add(s),handCursor=new THREE.Mesh(new THREE.SphereGeometry(.35),new THREE.MeshBasicMaterial({color:16776960,transparent:!0,opacity:.8})),scene.add(handCursor),renderer=new THREE.WebGLRenderer({antialias:!0,alpha:!0}),renderer.setSize(window.innerWidth,window.innerHeight),renderer.shadowMap.enabled=!0,renderer.shadowMap.type=THREE.PCFSoftShadowMap,renderer.outputEncoding=THREE.sRGBEncoding,document.body.appendChild(renderer.domElement),raycaster=new THREE.Raycaster,mouse=new THREE.Vector2,window.addEventListener("resize",(()=>{camera.aspect=window.innerWidth/window.innerHeight,camera.updateProjectionMatrix(),renderer.setSize(window.innerWidth,window.innerHeight)}));const d=new THREE.Shape,c=TILE_W,h=TILE_H,u=.3,m=-c/2,p=-h/2;d.moveTo(m,p+u),d.lineTo(m,p+h-u),d.quadraticCurveTo(m,p+h,m+u,p+h),d.lineTo(m+c-u,p+h),d.quadraticCurveTo(m+c,p+h,m+c,p+h-u),d.lineTo(m+c,p+u),d.quadraticCurveTo(m+c,p,m+c-u,p),d.lineTo(m+u,p),d.quadraticCurveTo(m,p,m,p+u),tileGeometry=new THREE.ExtrudeGeometry(d,{depth:TILE_D,bevelEnabled:!0,bevelThickness:BEVEL,bevelSize:BEVEL,bevelSegments:2}),tileGeometry.center(),initGame()}
+function init3D(){scene=new THREE.Scene,scene.background=new THREE.Color(3049303),scene.fog=new THREE.Fog(3049303,20,100),camera=new THREE.PerspectiveCamera(45,window.innerWidth/window.innerHeight,.1,1e3),updateCameraPosition();const e=new THREE.AmbientLight(16777215,.6);scene.add(e);const t=new THREE.DirectionalLight(16772795,1);t.position.set(5,20,10),t.castShadow=!0,t.shadow.mapSize.set(2048,2048),scene.add(t);const a=new THREE.Mesh(new THREE.PlaneGeometry(120,120),new THREE.MeshStandardMaterial({color:3049303,roughness:.9}));a.rotation.x=-Math.PI/2,a.position.y=-2,a.receiveShadow=!0,scene.add(a);const r=new THREE.MeshStandardMaterial({color:4070151}),n=new THREE.BoxGeometry(122,2,2),o=new THREE.Mesh(n,r);o.position.set(0,-2,-60),scene.add(o);const i=new THREE.Mesh(n,r);i.position.set(0,-2,60),scene.add(i);const l=new THREE.Mesh(new THREE.BoxGeometry(2,2,120),r);l.position.set(-60,-2,0),scene.add(l);const s=new THREE.Mesh(new THREE.BoxGeometry(2,2,120),r);s.position.set(60,-2,0),scene.add(s),handCursor=new THREE.Mesh(new THREE.SphereGeometry(.35),new THREE.MeshBasicMaterial({color:16776960,transparent:!0,opacity:.8})),scene.add(handCursor),renderer=new THREE.WebGLRenderer({antialias:!0,alpha:!0}),renderer.setSize(window.innerWidth,window.innerHeight),renderer.shadowMap.enabled=!0,renderer.shadowMap.type=THREE.PCFSoftShadowMap,renderer.outputEncoding=THREE.sRGBEncoding,document.body.appendChild(renderer.domElement),raycaster=new THREE.Raycaster,mouse=new THREE.Vector2,window.addEventListener("resize",(()=>{camera.aspect=window.innerWidth/window.innerHeight,camera.updateProjectionMatrix(),renderer.setSize(window.innerWidth,window.innerHeight)}));const d=new THREE.Shape,c=TILE_W,h=TILE_H,u=.3,m=-c/2,p=-h/2;d.moveTo(m,p+u),d.lineTo(m,p+h-u),d.quadraticCurveTo(m,p+h,m+u,p+h),d.lineTo(m+c-u,p+h),d.quadraticCurveTo(m+c,p+h,m+c,p+h-u),d.lineTo(m+c,p+u),d.quadraticCurveTo(m+c,p,m+c-u,p),d.lineTo(m+u,p),d.quadraticCurveTo(m,p,m,p+u),tileGeometry=new THREE.ExtrudeGeometry(d,{depth:TILE_D,bevelEnabled:!0,bevelThickness:BEVEL,bevelSize:BEVEL,bevelSegments:2}),tileGeometry.center(),initGame()}
 function createTileMesh(e){const t=TILE_PAINTER.createTexture(e.type,e.val),a=new THREE.MeshStandardMaterial({color:16777208,roughness:.2}),r=new THREE.MeshStandardMaterial({color:39364,roughness:.2}),n=new THREE.MeshBasicMaterial({map:t,transparent:!0}),o=new THREE.Group,i=new THREE.Mesh(tileGeometry,a);i.castShadow=!0,i.receiveShadow=!0,o.add(i);const l=new THREE.Mesh(new THREE.BoxGeometry(TILE_W-.1,TILE_H-.1,.1),r);l.position.z=-FACE_Z,o.add(l);const s=new THREE.Mesh(new THREE.PlaneGeometry(TILE_W-.3,TILE_H-.3),n);return s.position.z=FACE_Z,s.renderOrder=1,o.add(s),o.userData={isTile:!0,data:e},i.userData=s.userData=l.userData={parentTile:o},o}
 function initGame(){const e=generateTileData();for(let t=0;t<14;t++){const t=createTileMesh(e.pop());myHand.push(t),scene.add(t)}reorderTiles(),setupOpponentHandSimple(e,13,new THREE.Vector3(0,-.5,-28),0,Math.PI,"z"),setupOpponentHandSimple(e,13,new THREE.Vector3(-32,-.5,0),Math.PI/2,0,"x"),setupOpponentHandSimple(e,13,new THREE.Vector3(32,-.5,0),-Math.PI/2,0,"x")}
 function setupOpponentHandSimple(e,t,a,r,n,o){const i=1*TILE_W,l=t*i;for(let s=0;s<t;s++){const t=createTileMesh(e.pop());t.rotation.set(0,r,0);const n=-l/2+i/2+s*i;"z"===o?t.position.set(a.x+n,a.y,a.z):t.position.set(a.x,a.y,a.z+n),scene.add(t),opponentHands.push(t)}}
@@ -103,8 +106,6 @@ function discardTile(e){const t=myHand.indexOf(e);t>-1&&myHand.splice(t,1),e.use
 // --- 启动流程 ---
 async function startApp() {
     try {
-        if (typeof THREE === 'undefined') throw new Error("Three.js 加载失败");
-        
         init3D();
         
         // 1. 设置 Hands
@@ -113,12 +114,14 @@ async function startApp() {
         hands.onResults(onResults);
         
         // 2. 准备摄像头
-        const video = document.getElementsByClassName('input_video')[0];
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        if (!videoElement) throw new Error("Video Element Not Found");
+
         document.getElementById('loading').innerHTML = "步骤 2/3: 请求摄像头...<br><span style='font-size:14px; color:#f00'>请在上方弹窗点击“允许”</span>";
         
-        const cameraObj = new Camera(video, {
+        const cameraObj = new Camera(videoElement, {
             onFrame: async () => {
-                await hands.send({image: video});
+                await hands.send({image: videoElement});
             },
             width: 1280, height: 720
         });
@@ -135,8 +138,6 @@ async function startApp() {
         }
     }
 }
-
-startApp();
 </script>
 </body>
 </html>
