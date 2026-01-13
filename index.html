@@ -3,20 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D 麻将 v11.0 - 完美视角终结版</title>
+    <title>3D 麻将 v12.1 - 西墙牌面朝向修正版</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #2e8b57; font-family: "Microsoft YaHei", sans-serif; }
+        body { margin: 0; overflow: hidden; background-color: #1a5c38; font-family: "Microsoft YaHei", sans-serif; }
+        
         #info {
-            position: absolute; top: 10px; left: 10px; color: white;
-            background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px;
+            position: absolute; top: 15px; left: 15px; color: white;
+            background: rgba(0, 30, 20, 0.85); 
+            backdrop-filter: blur(16px);
+            padding: 22px; border-radius: 14px;
             pointer-events: none; user-select: none; z-index: 10;
-            border: 1px solid rgba(255,255,255,0.2); width: 280px;
+            border: 1px solid rgba(255,255,255,0.15); width: 290px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
         }
+        
+        #turn-indicator {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.6); padding: 10px 30px; border-radius: 30px;
+            color: #fff; font-size: 18px; font-weight: bold; letter-spacing: 2px;
+            border: 1px solid rgba(255,255,0,0.3); pointer-events: none;
+            display: none;
+        }
+
         #loading {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #fff; font-size: 24px; font-weight: bold; text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+            color: #d1fae5; font-size: 20px; font-weight: 400; letter-spacing: 3px;
+            text-shadow: 0 0 15px rgba(0,255,100,0.5);
+            background: rgba(0,0,0,0.8); padding: 20px 40px; border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: opacity 0.5s;
         }
-        .status-dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; vertical-align: middle; }
+        
+        .status-dot { 
+            height: 10px; width: 10px; border-radius: 50%; display: inline-block; 
+            margin-right: 12px; vertical-align: middle; 
+            box-shadow: 0 0 8px currentColor;
+        }
+        
+        h3 { margin: 0 0 8px 0; font-weight: 700; letter-spacing: 1.5px; color: #fff; font-size: 18px; }
+        .ver { font-size: 10px; opacity: 0.6; vertical-align: super; margin-left: 5px; }
+        hr { border: 0; border-top: 1px solid rgba(255,255,255,0.15); margin: 12px 0; }
+        
         .input_video { display: none; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
@@ -28,39 +55,44 @@
 <body>
 
 <div id="info">
-    <h3 style="margin:0 0 10px 0;">🀄️ 四人麻将 v11.0</h3>
-    <p><b>状态:</b> <span id="status_text">牌局准备就绪</span></p>
-    <hr style="border-color: #555;">
-    <div style="font-size: 14px; line-height: 1.8;">
-        <div><span class="status-dot" id="dot-grab" style="background:#555"></span> <b>捏合 (👌)</b>: 抓取 / 出牌</div>
-        <div><span class="status-dot" id="dot-view" style="background:#555"></span> <b>张开 (✋)</b>: 旋转视角</div>
+    <h3>🀄️ 真实麻将 <span class="ver">v12.1</span></h3>
+    <p style="margin: 5px 0; font-size: 0.85em; opacity: 0.8; letter-spacing: 0.5px;">四人回合制循环 & AI托管</p>
+    <hr>
+    <p><b>当前回合:</b> <span id="current-player" style="color:#ffeb3b">--</span></p>
+    <div style="font-size: 13px; line-height: 2.2; margin-top:15px;">
+        <div><span class="status-dot" id="dot-grab" style="background:#444; color:#444"></span> <b>捏合 (👌)</b>: 抓取出牌</div>
     </div>
+    <div style="margin-top:10px; font-size:12px; color:#aaa;">牌山剩余: <span id="wall-count">136</span> 张</div>
 </div>
 
-<div id="loading">正在调整四方座位...</div>
+<div id="turn-indicator">南家摸牌</div>
+<div id="loading">GAME STARTING...</div>
 <video class="input_video"></video>
 
 <script>
-// --- 1. 图案绘制引擎 ---
+// --- 1. 高清材质引擎 ---
 const TILE_PAINTER = {
     createTexture: function(type, val) {
-        const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 320;
+        const canvas = document.createElement('canvas');
+        canvas.width = 256; canvas.height = 320;
         const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,256,320);
-        ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = 2; ctx.strokeRect(4,4,248,312);
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        
+        const grad = ctx.createLinearGradient(0,0,256,320);
+        grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#f5f5f0');
+        ctx.fillStyle = grad; ctx.fillRect(0,0,256,320);
+        ctx.fillStyle = 'rgba(0,0,0,0.03)'; for(let i=0; i<800; i++) ctx.fillRect(Math.random()*256, Math.random()*320, 1.5, 1.5);
+        ctx.shadowColor = "rgba(0,0,0,0.1)"; ctx.shadowBlur = 2; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+        ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.strokeRect(6,6,244,308);
+        ctx.shadowColor = "transparent"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         if (type === '饼') this.drawDots(ctx, val);
         else if (type === '条') this.drawBamboos(ctx, val);
         else if (type === '万') this.drawWan(ctx, val);
         else if (type === '字') this.drawHonors(ctx, val);
-
         const tex = new THREE.CanvasTexture(canvas);
-        tex.colorSpace = THREE.SRGBColorSpace; 
-        tex.flipY = true; 
+        tex.colorSpace = THREE.SRGBColorSpace; tex.flipY = true; 
+        tex.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
         return tex;
     },
-    colors: { R: '#d60000', B: '#0044bb', G: '#008800' }, 
+    colors: { R: '#bf0000', B: '#002f87', G: '#006600' },
     drawDots: function(ctx, val) {
         const {R, B, G} = this.colors;
         const circle = (x, y, r, cO, cI) => {
@@ -68,49 +100,21 @@ const TILE_PAINTER = {
             if(cI){ ctx.beginPath(); ctx.arc(x,y,r*0.4,0,Math.PI*2); ctx.fillStyle=cI; ctx.fill(); }
             ctx.beginPath(); ctx.arc(x,y,r*0.75,0,Math.PI*2); ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=3; ctx.stroke();
         };
-        if(val===1) { 
-            ctx.beginPath(); ctx.arc(128,160,70,0,Math.PI*2); ctx.fillStyle=G; ctx.fill();
-            ctx.beginPath(); ctx.arc(128,160,45,0,Math.PI*2); ctx.fillStyle=R; ctx.fill();
-            ctx.strokeStyle='white'; ctx.lineWidth=4; for(let i=0;i<12;i++){let a=(i/12)*Math.PI*2; ctx.beginPath(); ctx.moveTo(128,160); ctx.lineTo(128+Math.cos(a)*70, 160+Math.sin(a)*70); ctx.stroke();}
-            return;
-        }
-        const pos={
-            2:[[128,80,B,R],[128,240,G,R]], 3:[[60,60,B,R],[128,160,R,R],[196,260,G,R]],
-            4:[[70,80,B,G],[186,80,B,G],[70,240,G,B],[186,240,G,B]],
-            5:[[70,70,B,G],[186,70,B,G],[128,160,R,R],[70,250,G,B],[186,250,G,B]],
-            6:[[70,70,G,R],[186,70,G,R],[70,160,R,R],[186,160,R,R],[70,250,R,R],[186,250,R,R]],
-            7:[[60,65,G,B],[128,85,G,B],[196,105,G,B],[70,180,R,R],[186,180,R,R],[70,260,R,R],[186,260,R,R]],
-            8:[[70,60,B,B],[186,60,B,B],[70,126,B,B],[186,126,B,B],[70,192,B,B],[186,192,B,B],[70,260,B,B],[186,260,B,B]],
-            9:[[60,60,B,B],[128,60,B,B],[196,60,B,B],[60,160,R,R],[128,160,R,R],[196,160,R,R],[60,260,G,G],[128,260,G,G],[196,260,G,G]]
-        };
+        if(val===1) { ctx.beginPath(); ctx.arc(128,160,70,0,Math.PI*2); ctx.fillStyle=G; ctx.fill(); ctx.beginPath(); ctx.arc(128,160,45,0,Math.PI*2); ctx.fillStyle=R; ctx.fill(); return; }
+        const pos={2:[[128,80,B,R],[128,240,G,R]], 3:[[60,60,B,R],[128,160,R,R],[196,260,G,R]], 4:[[70,80,B,G],[186,80,B,G],[70,240,G,B],[186,240,G,B]], 5:[[70,70,B,G],[186,70,B,G],[128,160,R,R],[70,250,G,B],[186,250,G,B]], 6:[[70,70,G,R],[186,70,G,R],[70,160,R,R],[186,160,R,R],[70,250,R,R],[186,250,R,R]], 7:[[60,65,G,B],[128,85,G,B],[196,105,G,B],[70,180,R,R],[186,180,R,R],[70,260,R,R],[186,260,R,R]], 8:[[70,60,B,B],[186,60,B,B],[70,126,B,B],[186,126,B,B],[70,192,B,B],[186,192,B,B],[70,260,B,B],[186,260,B,B]], 9:[[60,60,B,B],[128,60,B,B],[196,60,B,B],[60,160,R,R],[128,160,R,R],[196,160,R,R],[60,260,G,G],[128,260,G,G],[196,260,G,G]]};
         (pos[val]||[]).forEach(p=>circle(p[0],p[1],24,p[2],p[3]));
     },
     drawBamboos: function(ctx, val) {
         const {R, B, G} = this.colors;
-        if (val === 1) { 
-            ctx.fillStyle='#dcb'; ctx.beginPath(); ctx.arc(128,180,40,0,Math.PI*2); ctx.fill();
-            ctx.font='160px Arial'; ctx.fillStyle=G; ctx.fillText('🐦',128,160); return; 
-        }
-        const stick=(x,y,c)=>{
-            ctx.lineCap='round'; ctx.lineWidth=14; ctx.strokeStyle=c; ctx.beginPath(); ctx.moveTo(x,y-26); ctx.lineTo(x,y+26); ctx.stroke();
-            ctx.strokeStyle='white'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(x-6,y); ctx.lineTo(x+6,y); ctx.stroke();
-        };
-        const pos={
-            2:[[128,80,B],[128,240,G]], 3:[[128,60,B],[70,240,G],[186,240,G]],
-            4:[[70,80,B],[186,80,G],[70,240,G],[186,240,B]],
-            5:[[70,70,G],[186,70,B],[128,160,R],[70,250,B],[186,250,G]],
-            6:[[70,60,G],[128,60,G],[186,60,G],[70,240,G],[128,240,G],[186,240,G]],
-            7:[[128,60,R],[70,140,G],[128,140,B],[186,140,G],[70,240,G],[128,240,B],[186,240,G]],
-            8:[[70,60,G],[128,60,G],[186,60,G],[70,160,R],[186,160,R],[70,260,B],[128,260,B],[186,260,B]],
-            9:[[70,60,R],[128,60,B],[186,60,G],[70,160,R],[128,160,B],[186,160,G],[70,260,R],[128,260,B],[186,260,G]]
-        };
+        if (val === 1) { ctx.fillStyle='#dcb'; ctx.beginPath(); ctx.arc(128,180,40,0,Math.PI*2); ctx.fill(); ctx.font='160px Arial'; ctx.fillStyle=G; ctx.fillText('🐦',128,160); return; }
+        const stick=(x,y,c)=>{ ctx.lineCap='round'; ctx.lineWidth=14; ctx.strokeStyle=c; ctx.beginPath(); ctx.moveTo(x,y-26); ctx.lineTo(x,y+26); ctx.stroke(); ctx.strokeStyle='white'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(x-6,y); ctx.lineTo(x+6,y); ctx.stroke(); };
+        const pos={2:[[128,80,B],[128,240,G]], 3:[[128,60,B],[70,240,G],[186,240,G]], 4:[[70,80,B],[186,80,G],[70,240,G],[186,240,B]], 5:[[70,70,G],[186,70,B],[128,160,R],[70,250,B],[186,250,G]], 6:[[70,60,G],[128,60,G],[186,60,G],[70,240,G],[128,240,G],[186,240,G]], 7:[[128,60,R],[70,140,G],[128,140,B],[186,140,G],[70,240,G],[128,240,B],[186,240,G]], 8:[[70,60,G],[128,60,G],[186,60,G],[70,160,R],[186,160,R],[70,260,B],[128,260,B],[186,260,B]], 9:[[70,60,R],[128,60,B],[186,60,G],[70,160,R],[128,160,B],[186,160,G],[70,260,R],[128,260,B],[186,260,G]]};
         (pos[val]||pos[2]).forEach(p=>stick(p[0],p[1],p[2]));
     },
     drawWan: function(ctx, val) {
         const {R, B} = this.colors;
         const c = ['','一','二','三','四','五','六','七','八','九'];
-        ctx.font='bold 90px "Microsoft YaHei"'; ctx.fillStyle=B; ctx.fillText(c[val],128,90);
-        ctx.font='bold 120px "Microsoft YaHei"'; ctx.fillStyle=R; ctx.fillText('萬',128,230);
+        ctx.font='bold 90px "Microsoft YaHei"'; ctx.fillStyle=B; ctx.fillText(c[val],128,90); ctx.font='bold 120px "Microsoft YaHei"'; ctx.fillStyle=R; ctx.fillText('萬',128,230);
     },
     drawHonors: function(ctx, val) {
         const {R, B, G} = this.colors;
@@ -120,51 +124,66 @@ const TILE_PAINTER = {
     }
 };
 
-// --- 2. 3D 逻辑 ---
+// --- 2. 3D 场景与逻辑 ---
 let camera, scene, renderer;
-let myHand = [], opponentHands = [];
+// 玩家数据结构
+const PLAYERS = [
+    { id: 0, name: '南(我)', type: 'user', hand: [], discardCount: 0, riverPos: [0, 8], riverDir: [1, -1] }, 
+    { id: 1, name: '东', type: 'ai',   hand: [], discardCount: 0, riverPos: [8, 0], riverDir: [-1, -1] },
+    { id: 2, name: '北', type: 'ai',   hand: [], discardCount: 0, riverPos: [0, -8], riverDir: [-1, 1] },
+    { id: 3, name: '西', type: 'ai',   hand: [], discardCount: 0, riverPos: [-8, 0], riverDir: [1, 1] }
+];
+let currentPlayerIndex = 0; 
+
+let wallTiles = []; 
 let raycaster, mouse;
 let selectedTile = null;
 let handCursor;
 let tileGeometry = null;
 
-const TILE_W = 2.2, TILE_H = 3.0, TILE_D = 1.4, BEVEL = 0.1;
+const TILE_W = 2.2, TILE_H = 3.0, TILE_D = 1.4, BEVEL = 0.15;
 const FACE_Z = (TILE_D / 2) + BEVEL + 0.02;
+const GRAB_HEIGHT = 4.0; 
 
 let isPinching = false, cameraAngle = 0, targetCameraAngle = 0, previousPalmX = null;
+let isAnimating = false; 
 
 function init3D() {
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x2e8b57);
-    scene.fog = new THREE.Fog(0x2e8b57, 40, 150);
+    scene.background = new THREE.Color(0x1a5c38);
+    scene.fog = new THREE.FogExp2(0x1a5c38, 0.012);
 
     camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
     updateCameraPosition();
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambient);
-    const dirLight = new THREE.DirectionalLight(0xffeebb, 1.0);
-    dirLight.position.set(5, 30, 20); dirLight.castShadow = true; 
+    const ambient = new THREE.AmbientLight(0xffffff, 0.65); scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xfff0dd, 1.0);
+    dirLight.position.set(20, 50, 30); dirLight.castShadow = true; 
     dirLight.shadow.mapSize.set(2048, 2048); scene.add(dirLight);
+    const spotLight = new THREE.SpotLight(0xffffff, 0.7);
+    spotLight.position.set(0, 40, 0); spotLight.target.position.set(0, 0, 0);
+    spotLight.angle = Math.PI/3; spotLight.penumbra=0.3; scene.add(spotLight); scene.add(spotLight.target);
 
-    // 大号麻将桌
-    const table = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.9 }));
-    table.rotation.x = -Math.PI / 2; table.position.y = -2; table.receiveShadow = true; scene.add(table);
+    const tableMat = new THREE.MeshStandardMaterial({ color: 0x1f6642, roughness: 0.7, metalness: 0.05 });
+    const table = new THREE.Mesh(new THREE.PlaneGeometry(180, 180), tableMat);
+    table.rotation.x = -Math.PI/2; table.position.y = -2.01; table.receiveShadow = true; scene.add(table);
 
-    // 桌边
-    const borderMat = new THREE.MeshStandardMaterial({color:0x3e1b07});
-    const borderGeo = new THREE.BoxGeometry(122, 2, 2);
-    const b1 = new THREE.Mesh(borderGeo, borderMat); b1.position.set(0,-2,-60); scene.add(b1);
-    const b2 = new THREE.Mesh(borderGeo, borderMat); b2.position.set(0,-2,60); scene.add(b2);
-    const b3 = new THREE.Mesh(new THREE.BoxGeometry(2,2,120), borderMat); b3.position.set(-60,-2,0); scene.add(b3);
-    const b4 = new THREE.Mesh(new THREE.BoxGeometry(2,2,120), borderMat); b4.position.set(60,-2,0); scene.add(b4);
+    const borderMat = new THREE.MeshStandardMaterial({color:0x3e1b07, roughness: 0.4});
+    const borderGeo = new THREE.BoxGeometry(130, 3, 3);
+    const b1 = new THREE.Mesh(borderGeo, borderMat); b1.position.set(0,-1.5,-64); scene.add(b1);
+    const b2 = new THREE.Mesh(borderGeo, borderMat); b2.position.set(0,-1.5,64); scene.add(b2);
+    const b3 = new THREE.Mesh(new THREE.BoxGeometry(3,3,128), borderMat); b3.position.set(-64,-1.5,0); scene.add(b3);
+    const b4 = new THREE.Mesh(new THREE.BoxGeometry(3,3,128), borderMat); b4.position.set(64,-1.5,0); scene.add(b4);
 
-    handCursor = new THREE.Mesh(new THREE.SphereGeometry(0.35), new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.8 }));
-    scene.add(handCursor);
+    handCursor = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 1), new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.6, wireframe: true, depthTest: false }));
+    handCursor.renderOrder = 9999;
+    const cursorCore = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshBasicMaterial({color:0xffffff, depthTest: false}));
+    cursorCore.renderOrder = 9999; handCursor.add(cursorCore); scene.add(handCursor);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     document.body.appendChild(renderer.domElement);
 
     raycaster = new THREE.Raycaster(); mouse = new THREE.Vector2();
@@ -177,22 +196,21 @@ function init3D() {
     const shape = new THREE.Shape();
     const w=TILE_W, h=TILE_H, r=0.3, x=-w/2, y=-h/2;
     shape.moveTo(x,y+r); shape.lineTo(x,y+h-r); shape.quadraticCurveTo(x,y+h,x+r,y+h); shape.lineTo(x+w-r,y+h); shape.quadraticCurveTo(x+w,y+h,x+w,y+h-r); shape.lineTo(x+w,y+r); shape.quadraticCurveTo(x+w,y,x+w-r,y); shape.lineTo(x+r,y); shape.quadraticCurveTo(x,y,x,y+r);
-    tileGeometry = new THREE.ExtrudeGeometry(shape, { depth: TILE_D, bevelEnabled: true, bevelThickness: BEVEL, bevelSize: BEVEL, bevelSegments: 2 });
+    tileGeometry = new THREE.ExtrudeGeometry(shape, { depth: TILE_D, bevelEnabled: true, bevelThickness: BEVEL, bevelSize: BEVEL, bevelSegments: 3 });
     tileGeometry.center();
 
-    initGame();
-    document.getElementById('loading').style.display = 'none';
+    initGameSystem();
 }
 
 function createTileMesh(tileData) {
     const texture = TILE_PAINTER.createTexture(tileData.type, tileData.val);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xfffff8, roughness: 0.2 });
-    const backMat = new THREE.MeshStandardMaterial({ color: 0x009944, roughness: 0.2 });
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xfffff8, roughness: 0.15, metalness: 0.05 });
+    const backMat = new THREE.MeshStandardMaterial({ color: 0x009933, roughness: 0.3, metalness: 0.0 });
     const faceMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
 
     const group = new THREE.Group();
     const body = new THREE.Mesh(tileGeometry, bodyMat); body.castShadow = true; body.receiveShadow = true; group.add(body);
-    const back = new THREE.Mesh(new THREE.BoxGeometry(TILE_W-0.1, TILE_H-0.1, 0.1), backMat); back.position.z = -FACE_Z; group.add(back);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(TILE_W-0.2, TILE_H-0.2, 0.1), backMat); back.position.z = -FACE_Z; group.add(back);
     const face = new THREE.Mesh(new THREE.PlaneGeometry(TILE_W-0.3, TILE_H-0.3), faceMat); face.position.z = FACE_Z; face.renderOrder = 1; group.add(face);
 
     group.userData = { isTile: true, data: tileData };
@@ -200,50 +218,212 @@ function createTileMesh(tileData) {
     return group;
 }
 
-// --- 3. 游戏逻辑 ---
-function initGame() {
-    const allTiles = generateTileData();
+// --- 3. 游戏流程控制 ---
+function initGameSystem() {
+    const allDeck = generateTileData(); 
+    buildFullWall(allDeck);
+    dealInitialHands();
     
-    // 玩家 (南)
-    for(let i=0; i<14; i++) {
-        const tile = createTileMesh(allTiles.pop());
-        myHand.push(tile); scene.add(tile);
-    }
-    reorderTiles(); 
-
-    // 对家 (北) - Z轴排列
-    // 旋转 Math.PI (180度)，让绿背面对中心
-    setupOpponentHandSimple(allTiles, 13, new THREE.Vector3(0, -0.5, -28), Math.PI, 'z');
-    
-    // 上家 (西/左) - X轴排列
-    // 旋转 -Math.PI/2 (-90度)，让绿背面对中心
-    setupOpponentHandSimple(allTiles, 13, new THREE.Vector3(-32, -0.5, 0), -Math.PI/2, 'x');
-
-    // 下家 (东/右) - X轴排列
-    // 旋转 +Math.PI/2 (+90度)，让绿背面对中心
-    setupOpponentHandSimple(allTiles, 13, new THREE.Vector3(32, -0.5, 0), Math.PI/2, 'x');
+    setTimeout(() => {
+        document.getElementById('loading').style.opacity = 0;
+        document.getElementById('turn-indicator').style.display = 'block';
+        setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
+        
+        startTurn(0); 
+    }, 1200);
 }
 
-function setupOpponentHandSimple(deck, count, startPos, rotationY, axis) {
-    const spacing = TILE_W * 1.0; 
-    const totalW = count * spacing;
+function startTurn(playerIdx) {
+    currentPlayerIndex = playerIdx;
+    const player = PLAYERS[playerIdx];
     
-    for(let i=0; i<count; i++) {
-        const tile = createTileMesh(deck.pop());
-        tile.rotation.set(0, rotationY, 0); 
-        
-        const offset = -totalW/2 + spacing/2 + i*spacing;
-        
-        if (axis === 'z') {
-            // 对面玩家: 沿 X 轴分布
-            tile.position.set(startPos.x + offset, startPos.y, startPos.z);
+    const ind = document.getElementById('turn-indicator');
+    ind.innerText = player.name + (playerIdx === 0 ? " 出牌" : " 思考中...");
+    ind.style.color = playerIdx === 0 ? '#ffff00' : '#ffffff';
+    document.getElementById('current-player').innerText = player.name;
+    document.getElementById('current-player').style.color = playerIdx === 0 ? '#ffeb3b' : '#aaa';
+
+    drawTileFromWall(playerIdx, () => {
+        if (player.type === 'ai') {
+            setTimeout(() => {
+                const tileToDiscard = player.hand[0]; 
+                discardTile(playerIdx, tileToDiscard);
+            }, 800);
         } else {
-            // 左右玩家: 沿 Z 轴分布
-            tile.position.set(startPos.x, startPos.y, startPos.z + offset);
+            ind.innerText = "请出牌 (捏合)";
         }
-        scene.add(tile);
-        opponentHands.push(tile);
+    });
+}
+
+function nextTurn() {
+    const nextIdx = (currentPlayerIndex + 1) % 4;
+    startTurn(nextIdx);
+}
+
+function buildFullWall(deck) {
+    const tilesPerSide = 17; const dist = 21.0; const offset = 3.5; const globalRot = Math.PI / 60; 
+    const wallGroup = new THREE.Group(); wallGroup.rotation.y = globalRot; scene.add(wallGroup);
+    
+    // Configs 索引: 0:South, 1:East, 2:West (Visual Left), 3:North (Visual Top)
+    const configs = [
+        { pos: [dist, -offset], rot: -Math.PI/2 }, // 0: South
+        { pos: [offset, dist], rot: 0 },           // 1: East
+        { pos: [-dist, offset], rot: Math.PI/2 },  // 2: West (Visually Left)
+        { pos: [-offset, -dist], rot: Math.PI }    // 3: North (Visually Top)
+    ];
+    
+    configs.forEach((cfg, idx) => {
+        for(let i=tilesPerSide-1; i>=0; i--) { 
+            for(let h=1; h>=0; h--) { 
+                if(deck.length === 0) break;
+                const t = createTileMesh(deck.pop());
+                
+                // --- 牌面朝向修正逻辑 ---
+                if (idx === 2) {
+                    // 西墙(West)：明确使用XYZ顺序
+                    // X=90 (PI/2): 牌面朝下 (Face Down)
+                    // Y=90 (PI/2): 调整为宽边沿墙，长边垂直墙
+                    t.rotation.order = 'XYZ'; 
+                    t.rotation.set(Math.PI/2, Math.PI/2, 0); 
+                } else if (idx === 3) {
+                    // 北墙(North)：保持原有成功设置
+                    t.rotation.order = 'YXZ'; 
+                    t.rotation.set(-Math.PI/2, cfg.rot, 0);
+                } else {
+                    // 东和南墙：默认处理
+                    t.rotation.order = 'YXZ'; 
+                    t.rotation.set(Math.PI/2, cfg.rot, 0);
+                }
+
+                const wallLen = tilesPerSide * TILE_W; 
+                const linear = -wallLen/2 + i * TILE_W + TILE_W/2;
+                let px=0, pz=0;
+                
+                if (Math.abs(cfg.rot) < 0.1) { // East
+                    px = linear + cfg.pos[0]; pz = cfg.pos[1]; 
+                } 
+                else if (Math.abs(cfg.rot + Math.PI/2) < 0.1) { // South
+                    px = cfg.pos[0]; pz = linear + cfg.pos[1]; 
+                } 
+                else if (Math.abs(cfg.rot - Math.PI) < 0.1) { // North (Top)
+                    px = -linear + cfg.pos[0]; pz = cfg.pos[1]; 
+                } 
+                else { // West (Left) - idx 2
+                    px = cfg.pos[0]; 
+                    // 保持自南向北的顺序 (linear)
+                    pz = linear + cfg.pos[1]; 
+                }
+
+                t.position.set(px, -1.3 + h * 1.4, pz);
+                wallGroup.add(t); t.updateMatrixWorld(); wallTiles.push(t);
+            }
+        }
+    });
+    const tempVec = new THREE.Vector3(); const tempQuat = new THREE.Quaternion(); const tempScale = new THREE.Vector3();
+    [...wallTiles].forEach(t => { t.matrixWorld.decompose(tempVec, tempQuat, tempScale); scene.add(t); t.position.copy(tempVec); t.quaternion.copy(tempQuat); t.scale.copy(tempScale); t.rotation.order = 'XYZ'; });
+    updateWallCount();
+}
+
+function dealInitialHands() {
+    for(let p=0; p<4; p++) {
+        for(let i=0; i<13; i++) {
+            const t = wallTiles.shift();
+            PLAYERS[p].hand.push(t);
+        }
     }
+    updateHandLayout(0, false); 
+    for(let p=1; p<4; p++) updateOpponentHandLayout(p, false);
+    updateWallCount();
+}
+
+function drawTileFromWall(playerIdx, onComplete) {
+    if(wallTiles.length === 0) return;
+    isAnimating = true;
+    const t = wallTiles.shift();
+    PLAYERS[playerIdx].hand.push(t);
+    updateWallCount();
+
+    const startPos = t.position.clone();
+    const startRot = t.rotation.clone();
+    
+    let endPos;
+    let endRot; 
+
+    if (playerIdx === 0) { // Me
+        const spacing = TILE_W * 1.1;
+        const endX = -((14 * spacing)/2) + spacing/2 + 13 * spacing + 0.5;
+        endPos = new THREE.Vector3(endX, -0.5, 24);
+        endRot = new THREE.Vector3(-Math.PI/6, 0, 0); 
+    } else {
+        const cfg = getOpponentConfig(playerIdx);
+        const spacing = TILE_W * 1.0;
+        const totalW = 13 * spacing; 
+        const offset = -totalW/2 + spacing/2 + 13*spacing + 0.5; 
+        
+        let px, pz;
+        if (cfg.axis === 'z') { px = cfg.pos[0]; pz = cfg.pos[1] + offset; } 
+        else { px = cfg.pos[0] + offset; pz = cfg.pos[1]; }
+        
+        endPos = new THREE.Vector3(px, -0.5, pz);
+        endRot = new THREE.Vector3(0, cfg.rot, 0); 
+    }
+
+    let progress = 0;
+    const animateDraw = () => {
+        progress += 0.05;
+        if(progress <= 1) {
+            const midPos = startPos.clone().lerp(endPos, 0.5);
+            midPos.y += 10; 
+            
+            const q0 = startPos.clone().lerp(midPos, progress);
+            const q1 = midPos.clone().lerp(endPos, progress);
+            t.position.copy(q0.lerp(q1, progress));
+            
+            const targetRx = playerIdx === 0 ? -Math.PI/6 : 0;
+            const targetRy = playerIdx === 0 ? 0 : endRot.y;
+            
+            const curRx = THREE.MathUtils.lerp(Math.PI/2, targetRx, progress);
+            const curRy = THREE.MathUtils.lerp(startRot.y, targetRy, progress);
+            t.rotation.set(curRx, curRy, 0);
+            
+            requestAnimationFrame(animateDraw);
+        } else {
+            if(playerIdx === 0) updateHandLayout(0, true);
+            else updateOpponentHandLayout(playerIdx, true);
+            
+            isAnimating = false;
+            if(onComplete) onComplete();
+        }
+    };
+    animateDraw();
+}
+
+function getOpponentConfig(idx) {
+    if(idx===1) return { pos: [32, 0], rot: Math.PI/2, axis: 'z' }; // East
+    if(idx===2) return { pos: [0, -32], rot: Math.PI, axis: 'x' }; // North
+    if(idx===3) return { pos: [-32, 0], rot: -Math.PI/2, axis: 'z' }; // West
+    return {};
+}
+
+function updateOpponentHandLayout(idx, animate) {
+    const cfg = getOpponentConfig(idx);
+    const hand = PLAYERS[idx].hand;
+    const spacing = TILE_W * 1.0;
+    const totalW = 13 * spacing; 
+    
+    hand.forEach((t, i) => {
+        let offset = -totalW/2 + spacing/2 + i*spacing;
+        if (i === 13) offset += 0.5; 
+
+        let px, pz;
+        if (cfg.axis === 'z') { px = cfg.pos[0]; pz = cfg.pos[1] + offset; } 
+        else { px = cfg.pos[0] + offset; pz = cfg.pos[1]; }
+
+        const targetPos = new THREE.Vector3(px, -0.5, pz);
+        if(animate) t.position.lerp(targetPos, 0.2);
+        else t.position.copy(targetPos);
+        t.rotation.set(0, cfg.rot, 0);
+    });
 }
 
 function generateTileData() {
@@ -254,87 +434,81 @@ function generateTileData() {
     return d;
 }
 
-function reorderTiles() {
+function updateWallCount() { document.getElementById('wall-count').innerText = wallTiles.length; }
+
+function updateHandLayout(idx, animate) {
+    const hand = PLAYERS[idx].hand;
     const spacing = TILE_W * 1.1;
-    const startX = -((myHand.length * spacing)/2) + spacing/2;
-    myHand.forEach((tile, i) => {
+    const startX = -((13 * spacing)/2) + spacing/2; 
+    
+    hand.forEach((tile, i) => {
         if (tile !== selectedTile) {
-            const tx = startX + i * spacing;
-            // 玩家手牌位置 Z=25 (更靠外)
-            tile.position.lerp(new THREE.Vector3(tx, -0.5, 25), 0.2); 
-            tile.rotation.set(-Math.PI/10, 0, 0); 
+            let tx = startX + i * spacing;
+            if(i === 13) tx += 0.5;
+            const targetPos = new THREE.Vector3(tx, -0.5, 24);
+            if(animate) tile.position.lerp(targetPos, 0.2);
+            else tile.position.copy(targetPos);
+            tile.rotation.set(-Math.PI/10, 0, 0);
         }
     });
 }
 
 function updateCameraPosition() {
     cameraAngle += (targetCameraAngle - cameraAngle) * 0.05;
-    // 摄像机拉远到 52，升高到 45，确保看清全场
-    const r = 52; 
+    const r = 48; 
     camera.position.x = r * Math.sin(cameraAngle);
-    camera.position.z = r * Math.cos(cameraAngle) + 6;
-    camera.position.y = 45; 
-    camera.lookAt(0, -5, 0);
+    camera.position.z = r * Math.cos(cameraAngle) + 8;
+    camera.position.y = 28; camera.lookAt(0, -3, 0); 
 }
 
-// --- 手势识别 ---
 function onResults(results) {
-    reorderTiles();
+    if(!isAnimating && currentPlayerIndex === 0) updateHandLayout(0, true);
     updateCameraPosition();
     
-    const dotGrab = document.getElementById('dot-grab');
-    const dotView = document.getElementById('dot-view');
-    const statusText = document.getElementById('status_text');
-    dotGrab.style.background = '#555'; dotView.style.background = '#555';
-
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const lm = results.multiHandLandmarks[0];
-        const indexTip = lm[8]; const thumbTip = lm[4]; const pinkyTip = lm[20]; const wrist = lm[0];
+        const indexTip = lm[8]; const thumbTip = lm[4]; 
+        mouse.x = ((1 - indexTip.x) * 2) - 1; mouse.y = -(indexTip.y * 2) + 1;
         
-        mouse.x = ((1 - indexTip.x) * 2) - 1;
-        mouse.y = -(indexTip.y * 2) + 1;
-        updateCursor();
-
+        const canInteract = (currentPlayerIndex === 0 && !isAnimating);
         const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
-        const palmOpenDist = Math.hypot(pinkyTip.x - wrist.x, pinkyTip.y - wrist.y);
         
+        updateCursor(isPinching);
+
         if (pinchDist < 0.06) {
-            isPinching = true; previousPalmX = null;
-            dotGrab.style.background = '#0f0'; statusText.innerText = "✊ 抓取模式";
-            handCursor.material.color.set(0x00ff00);
-            processGrab(true);
-        } else if (!isPinching && palmOpenDist > 0.15) {
-            isPinching = false; processGrab(false);
-            dotView.style.background = '#00f'; statusText.innerText = "✋ 视角模式";
-            handCursor.material.color.set(0x0088ff);
+            isPinching = true;
+            document.getElementById('dot-grab').style.background = '#00e676';
+            handCursor.material.color.set(0x00e676);
+            if(canInteract) processGrab(true);
+        } else {
+            isPinching = false;
+            document.getElementById('dot-grab').style.background = '#444';
+            handCursor.material.color.set(0xffff00);
+            if(canInteract) processGrab(false);
+            
             const currentX = lm[9].x;
             if (previousPalmX !== null && Math.abs(currentX - previousPalmX) > 0.003) {
                 targetCameraAngle += ((1 - currentX) - (1 - previousPalmX)) * 4.0;
             }
             previousPalmX = currentX;
-        } else {
-            isPinching = false; processGrab(false); previousPalmX = null;
-            statusText.innerText = "☝️ 移动光标";
-            handCursor.material.color.set(0xffff00);
         }
-    } else {
-        statusText.innerText = "⏳ 寻找手势..."; previousPalmX = null;
     }
     renderer.render(scene, camera);
 }
 
-function updateCursor() {
+function updateCursor(grabbing) {
     raycaster.setFromCamera(mouse, camera);
-    const plane = new THREE.Plane(new THREE.Vector3(0,0,1), -8);
+    const planeY = grabbing ? GRAB_HEIGHT : 0.5;
+    const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
     const target = new THREE.Vector3();
-    raycaster.ray.intersectPlane(plane, target);
-    if(target) handCursor.position.lerp(target, 0.4);
+    raycaster.ray.intersectPlane(groundPlane, target);
+    if(target) handCursor.position.lerp(target, 0.5);
 }
 
 function processGrab(isGrabbing) {
     if (isGrabbing) {
         if (!selectedTile) {
-            const intersects = raycaster.intersectObjects(myHand, true);
+            const intersects = raycaster.intersectObjects(PLAYERS[0].hand, true);
             if (intersects.length > 0) {
                 let target = intersects[0].object;
                 while(target) {
@@ -346,32 +520,91 @@ function processGrab(isGrabbing) {
         }
         if (selectedTile) {
             selectedTile.position.copy(handCursor.position);
-            selectedTile.position.z = 15;
-            selectedTile.rotation.x = -Math.PI / 6;
+            selectedTile.rotation.set(-Math.PI/6, 0, -Math.PI/30);
         }
     } else {
         if (selectedTile) {
-            if (selectedTile.position.y > 5) discardTile(selectedTile);
-            selectedTile = null;
+            if (selectedTile.position.z < 15) discardTile(0, selectedTile); 
+            else selectedTile = null; 
         }
     }
 }
 
-function discardTile(tile) {
-    const idx = myHand.indexOf(tile);
-    if (idx > -1) myHand.splice(idx, 1);
-    tile.userData = null;
-    tile.position.set(Math.random()*10-5, Math.random()*5+5, -Math.random()*5);
-    tile.rotation.set(-Math.PI/2, 0, Math.random()*3);
-    setTimeout(() => {
-        const t = createTileMesh(generateTileData()[0]);
-        scene.add(t); myHand.push(t);
-    }, 500);
+function discardTile(playerIdx, tile) {
+    if(isAnimating) return;
+    
+    const player = PLAYERS[playerIdx];
+    const hand = player.hand;
+    const idx = hand.indexOf(tile);
+    if (idx > -1) hand.splice(idx, 1);
+    
+    tile.userData = null; 
+    selectedTile = null;
+    isAnimating = true;
+
+    const dCount = player.discardCount++;
+    const row = Math.floor(dCount / 6);
+    const col = dCount % 6;
+    
+    const gapX = TILE_W * 1.05; 
+    const gapZ = TILE_H * 1.1;
+    
+    const localX = (-2.5 + col) * gapX;
+    const localZ = (row) * gapZ; 
+    
+    let tx, tz, tr; 
+    
+    const jitter = () => (Math.random()*0.1 - 0.05);
+
+    if (playerIdx === 0) { 
+        tx = localX + jitter();
+        tz = 6 - localZ + jitter();
+        tr = 0; 
+    } else if (playerIdx === 1) { 
+        tx = 18 - localZ + jitter();
+        tz = localX + jitter();
+        tr = Math.PI/2; 
+    } else if (playerIdx === 2) { 
+        tx = -localX + jitter();
+        tz = -18 + localZ + jitter();
+        tr = Math.PI; 
+    } else if (playerIdx === 3) { 
+        tx = -18 + localZ + jitter();
+        tz = -localX + jitter();
+        tr = -Math.PI/2; 
+    }
+
+    const startPos = tile.position.clone();
+    const endPos = new THREE.Vector3(tx, -1.3, tz); 
+    
+    let t = 0;
+    const animateOut = () => {
+        t += 0.05;
+        if(t <= 1) {
+            tile.position.lerpVectors(startPos, endPos, t);
+            tile.position.y += Math.sin(t * Math.PI) * 6; 
+            
+            tile.rotation.set(-Math.PI/2, tr, 0);
+            
+            requestAnimationFrame(animateOut);
+        } else {
+            tile.position.copy(endPos);
+            tile.rotation.set(-Math.PI/2, tr, 0);
+            isAnimating = false;
+            
+            setTimeout(nextTurn, 500);
+        }
+    };
+    animateOut();
+    
+    if(playerIdx===0) updateHandLayout(0, true);
+    else updateOpponentHandLayout(playerIdx, true);
 }
 
 const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
 hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
 hands.onResults(onResults);
+
 const video = document.getElementsByClassName('input_video')[0];
 const cameraObj = new Camera(video, { onFrame: async () => { await hands.send({image: video}); }, width: 1280, height: 720 });
 
